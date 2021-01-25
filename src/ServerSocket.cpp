@@ -32,7 +32,7 @@ bool ServerSocket::ServInit()
 	//           WSAEINPROGRESS    : A blocking WinSock 1.1 operation is executing
 	//           WSAEPRCLIM        : Maximum number of tasks supported by this WinSock implementation is reached
 	//           WSAEFAULT         : The lpWSAData paramter (`&data`) isn't a valid pointer
-	if (!WSAStartup(ver, &data))
+	if (WSAStartup(ver, &data) != 0)
 		return false;
 
 #endif
@@ -60,6 +60,8 @@ bool ServerSocket::ServRun()
 		if (client_sock == INVALID_SOCKET)
 			continue;
 
+		// recv returns 0 if nothing was received, the number of bytes received otherwise.
+		// keep receiving messages until they stop coming and call the callback function on every message
 		uint16_t bytes_received_cnt = 0;
 		do
 		{
@@ -70,8 +72,10 @@ bool ServerSocket::ServRun()
 
 			// pass client message to callback function
 			if (this->msgCallbackFunction != nullptr)
-				this->msgCallbackFunction(this, client_sock, std::string(buf, 0));
+				this->msgCallbackFunction(this, client_sock, std::string(buf, 0, bytes_received_cnt));
 		} while (bytes_received_cnt > 0);
+
+		closesocket(client_sock);
 	}
 }
 
