@@ -1,6 +1,6 @@
 #include "ServerSocket.h"
 
-ServerSocket::ServerSocket(const uint16_t p_port, std::function<void(ServerSocket, uint16_t, const std::string&)> p_callbackFunc)
+ServerSocket::ServerSocket(const uint16_t p_port, std::function<void(ServerSocket*, const uint16_t, const std::string)> p_callbackFunc)
 {
 	this->ipv4addr = "127.0.0.1";
 	this->port = p_port;
@@ -40,6 +40,41 @@ bool ServerSocket::ServInit()
 	return true;
 }
 
+bool ServerSocket::ServRun()
+{
+	// TODO: Multithread this
+
+	SOCKET listener_sock = INVALID_SOCKET;
+	SOCKET client_sock = INVALID_SOCKET;
+	// buffer with maximum size of 15 KB
+	char buf[MAX_BUFFER_SIZE];
+	while (true)
+	{
+		// acquire listener
+		listener_sock = this->ServMakeSocket();
+		if (listener_sock == INVALID_SOCKET)
+			return false;
+
+		// accept client, if any
+		client_sock = this->ServAccept(listener_sock);
+		if (client_sock == INVALID_SOCKET)
+			continue;
+
+		uint16_t bytes_received_cnt = 0;
+		do
+		{
+			memset(buf, 0, MAX_BUFFER_SIZE);
+			bytes_received_cnt = recv(client_sock, buf, MAX_BUFFER_SIZE, 0);
+			if (bytes_received_cnt == 0)
+				break;
+
+			// pass client message to callback function
+			if (this->msgCallbackFunction != nullptr)
+				this->msgCallbackFunction(this, client_sock, std::string(buf, 0));
+		} while (bytes_received_cnt > 0);
+	}
+}
+
 bool ServerSocket::ServClose()
 {
 #ifdef _WIN32
@@ -62,46 +97,46 @@ bool ServerSocket::ServSend(const uint32_t client_socket, const std::string& msg
 #ifdef _WIN32
 SOCKET ServerSocket::ServMakeSocket()
 {
-	addrinfo* addr_info = nullptr;
-	addrinfo hints;
-
-	// Set address hints
-	ZeroMemory(&hints, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_protocol = IPPROTO_TCP;
-	hints.ai_flags = AI_PASSIVE;
-
-	// Attempt to get address info (DNS lookup), close server and return invalid socket if it fails
-	if (getaddrinfo(nullptr, std::to_string(this->port).c_str(), &hints, &addr_info) != 0)
-	{
-		this->ServClose();
-		return INVALID_SOCKET;
-	}
-
-	// Make a listening socket given the address info returned by getaddrinfo
+	// Make an IPv4 TCP/IP listening socket with an unspecified protocol
 	// Close server and return invalid socket if listener creation fails
-	SOCKET listener_sock = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol);
+	SOCKET listener_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (listener_sock == INVALID_SOCKET)
 	{
-		freeaddrinfo(addr_info);
 		this->ServClose();
 		return INVALID_SOCKET;
 	}
 
-	// Attempt to bind listener_sock to addr_info->ai_addr, which represents the server's IP address and port.
+	sockaddr_in hints;
+	// Set address hints
+	ZeroMemory(&hints, sizeof(hints));
+	hints.sin_family = AF_INET;
+	hints.sin_port = htons(this->port);
+	if (inet_pton(AF_INET, this->ipv4addr.c_str(), &hints.sin_addr) == 0)
+		return INVALID_SOCKET;
+
+	// Attempt to bind listener_sock to hints.sin_addr:hints.sin_port, which represents the server's IP address and port.
 	// If binding is successful, bind returns zero.
 	// If it isn't, bind returns SOCKET_ERROR.
-	if (bind(listener_sock, addr_info->ai_addr, (int32_t)addr_info->ai_addrlen) == SOCKET_ERROR)
+	if (bind(listener_sock, (sockaddr*)&hints, sizeof(hints)) == SOCKET_ERROR)
 	{
-		freeaddrinfo(addr_info);
 		closesocket(listener_sock);
 		this->ServClose();
 		return INVALID_SOCKET;
 	}
 
-	// If binding is successful, addr_info is no longer needed and it's safe to free it
-	freeaddrinfo(addr_info);
+	// Start listening and return the socket
+	if (listen(listener_sock, SOMAXCONN) == SOCKET_ERROR)
+	{
+		closesocket(listener_sock);
+		this->ServClose();
+		return INVALID_SOCKET;
+	}
 	return listener_sock;
 }
+
+SOCKET ServerSocket::ServAccept(const SOCKET p_listener_sock)
+{
+	return accept(p_listener_sock, nullptr, nullptr);
+}
 #endif
+
