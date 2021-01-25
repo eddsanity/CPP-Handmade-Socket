@@ -60,6 +60,8 @@ bool ServerSocket::ServRun()
 		if (client_sock == INVALID_SOCKET)
 			continue;
 
+		closesocket(listener_sock);
+
 		// recv returns 0 if nothing was received, the number of bytes received otherwise.
 		// keep receiving messages until they stop coming and call the callback function on every message
 		uint16_t bytes_received_cnt = 0;
@@ -68,7 +70,7 @@ bool ServerSocket::ServRun()
 			memset(buf, 0, MAX_BUFFER_SIZE);
 			bytes_received_cnt = recv(client_sock, buf, MAX_BUFFER_SIZE, 0);
 			if (bytes_received_cnt == 0)
-				break;
+				continue;
 
 			// pass client message to callback function
 			if (this->msgCallbackFunction != nullptr)
