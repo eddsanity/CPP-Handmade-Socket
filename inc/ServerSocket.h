@@ -26,15 +26,21 @@ public:
 	~ServerSocket();
 
 	bool ServInit();
-	SOCKET ServAccept();
 	bool ServSend(const uint32_t, const std::string&);
-	void ServClose();
+	bool ServClose();
+#ifdef _WIN32
+	SOCKET ServAccept();
+#endif
 private:
 	std::string ipv4addr;
 	uint16_t port;
 	std::function<void(ServerSocket, uint16_t, const std::string&)> msgCallbackFunction;
+#ifdef _WIN32
 	SOCKET ServMakeSocket();
 	SOCKET ServListen();
+#endif
+
+	// TODO: Linux variants of ServMakeSocket and ServListen
 };
 
 #endif 
