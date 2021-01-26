@@ -52,10 +52,9 @@ bool ServerSocket::ServInit()
 bool ServerSocket::ServRun()
 {
 	// TODO: Multithread this
-#ifdef _WIN32
 	sock_t listener_sock = INVALID_SOCKET;
 	sock_t client_sock = INVALID_SOCKET;
-#endif
+
 	// buffer with maximum size of 15 KB
 	char buf[MAX_BUFFER_SIZE];
 	while (true)
@@ -89,6 +88,7 @@ bool ServerSocket::ServRun()
 
 		closesocket(client_sock);
 	}
+	return true;
 }
 
 bool ServerSocket::ServClose(const sock_t socket)
@@ -114,8 +114,8 @@ bool ServerSocket::ServSend(const uint32_t client_socket, const std::string& msg
 
 sock_t ServerSocket::ServMakeSocket()
 {
-    // Make an IPv4 TCP/IP listening sock_t with an unspecified protocol
-    // Close server and return invalid sock_t if listener creation fails
+	// Make an IPv4 TCP/IP listening sock_t with an unspecified protocol
+	// Close server and return invalid sock_t if listener creation fails
 	sock_t listener_sock = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (listener_sock == INVALID_SOCKET)
