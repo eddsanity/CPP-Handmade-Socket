@@ -10,7 +10,7 @@ void callbackFunction(ServerSocket* serv_sock, SOCKET client_sock, std::string m
 
 int main()
 {
-	ServerSocket testServ(10101, callbackFunction);
+	ServerSocket testServ(10101, 0, callbackFunction);
 
 	if (!testServ.ServInit())
 		return -1;
