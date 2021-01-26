@@ -1,15 +1,24 @@
 #include "ServerSocket.h"
 
-ServerSocket::ServerSocket(const uint16_t p_port, std::function<void(ServerSocket*, const uint16_t, const std::string)> p_callbackFunc)
+ServerSocket::ServerSocket(const uint16_t p_port, const uint32_t backlog, std::function<void(ServerSocket*, const uint16_t, const std::string)> p_callbackFunc)
 {
 	this->ipv4addr = "127.0.0.1";
 	this->port = p_port;
+	this->maxNumOfConnections = (backlog == 0) ? SOMAXCONN : backlog;
+	this->msgCallbackFunction = p_callbackFunc;
+}
+
+ServerSocket::ServerSocket(const std::string p_addr, const uint16_t p_port, const uint32_t backlog, std::function<void(ServerSocket*, const uint16_t, const std::string)> p_callbackFunc)
+{
+	this->ipv4addr = p_addr;
+	this->port = p_port;
+	this->maxNumOfConnections = (backlog == 0) ? SOMAXCONN : backlog;
 	this->msgCallbackFunction = p_callbackFunc;
 }
 
 ServerSocket::~ServerSocket()
 {
-	this->ServClose();
+	this->ServClose(this->listenerSocket);
 }
 
 bool ServerSocket::ServInit()
@@ -43,9 +52,10 @@ bool ServerSocket::ServInit()
 bool ServerSocket::ServRun()
 {
 	// TODO: Multithread this
-
-	SOCKET listener_sock = INVALID_SOCKET;
-	SOCKET client_sock = INVALID_SOCKET;
+#ifdef _WIN32
+	sock_t listener_sock = INVALID_SOCKET;
+	sock_t client_sock = INVALID_SOCKET;
+#endif
 	// buffer with maximum size of 15 KB
 	char buf[MAX_BUFFER_SIZE];
 	while (true)
@@ -81,7 +91,7 @@ bool ServerSocket::ServRun()
 	}
 }
 
-bool ServerSocket::ServClose()
+bool ServerSocket::ServClose(const sock_t socket)
 {
 #ifdef _WIN32
 	// WSACleanup returns zero if it was successful, return one of 3 error code if it wasn't.
@@ -89,26 +99,28 @@ bool ServerSocket::ServClose()
 	//           WSAENETDOWN       : If network subsystem failed.
 	//           WSAEINPROGRESS    : A blocking WinSock 1.1 call is in progress or service provider not done
 	//                               processing callback function.
-	return WSACleanup() != SOCKET_ERROR;
+	return (closesocket(socket) == 0 && WSACleanup() != SOCKET_ERROR);
+#endif
+
+#ifdef __linux__
+	return close(socket) == 0;
 #endif
 }
 
 bool ServerSocket::ServSend(const uint32_t client_socket, const std::string& msg)
 {
-#ifdef _WIN32
 	return send(client_socket, msg.c_str(), msg.size() + 1, 0) != SOCKET_ERROR;
-#endif
 }
 
-#ifdef _WIN32
-SOCKET ServerSocket::ServMakeSocket()
+sock_t ServerSocket::ServMakeSocket()
 {
-	// Make an IPv4 TCP/IP listening socket with an unspecified protocol
-	// Close server and return invalid socket if listener creation fails
-	SOCKET listener_sock = socket(AF_INET, SOCK_STREAM, 0);
+    // Make an IPv4 TCP/IP listening sock_t with an unspecified protocol
+    // Close server and return invalid sock_t if listener creation fails
+	sock_t listener_sock = socket(AF_INET, SOCK_STREAM, 0);
+
 	if (listener_sock == INVALID_SOCKET)
 	{
-		this->ServClose();
+		this->ServClose(listener_sock);
 		return INVALID_SOCKET;
 	}
 
@@ -125,24 +137,22 @@ SOCKET ServerSocket::ServMakeSocket()
 	// If it isn't, bind returns SOCKET_ERROR.
 	if (bind(listener_sock, (sockaddr*)&hints, sizeof(hints)) == SOCKET_ERROR)
 	{
-		closesocket(listener_sock);
-		this->ServClose();
+		this->ServClose(listener_sock);
 		return INVALID_SOCKET;
 	}
 
 	// Start listening and return the socket
-	if (listen(listener_sock, SOMAXCONN) == SOCKET_ERROR)
+	if (listen(listener_sock, this->maxNumOfConnections) == SOCKET_ERROR)
 	{
-		closesocket(listener_sock);
-		this->ServClose();
+		this->ServClose(listener_sock);
 		return INVALID_SOCKET;
 	}
 	return listener_sock;
 }
 
-SOCKET ServerSocket::ServAccept(const SOCKET p_listener_sock)
+
+sock_t ServerSocket::ServAccept(const sock_t p_listener_sock)
 {
 	return accept(p_listener_sock, nullptr, nullptr);
 }
-#endif
 
